@@ -79,6 +79,7 @@ This runs a bootstrap script on the VM that initializes/unseals Vault (as needed
 Lab credential files are stored on the VM at:
 - `/root/vault-init.json`
 - `/root/vault-app1-creds.json`
+- `/etc/profile.d/92-vault-dev-root-token.sh` (dev-only auto-export of `VAULT_TOKEN`)
 
 ## Optional: Cloud SQL Integration Test
 1. Enable Cloud SQL in `terraform.tfvars` and apply:

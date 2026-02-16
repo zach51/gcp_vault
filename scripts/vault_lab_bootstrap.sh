@@ -61,6 +61,12 @@ fi
 ROOT_TOKEN="$(jq -r '.root_token' "${INIT_JSON_PATH}")"
 export VAULT_TOKEN="${ROOT_TOKEN}"
 
+# Dev-only convenience: auto-export root token for all future shell sessions.
+cat >/etc/profile.d/92-vault-dev-root-token.sh <<PROFILE
+export VAULT_TOKEN="${ROOT_TOKEN}"
+PROFILE
+chmod 0644 /etc/profile.d/92-vault-dev-root-token.sh
+
 if ! vault secrets list -format=json | jq -e 'has("secret/")' >/dev/null; then
   echo "Enabling KV v2 at secret/..."
   vault secrets enable -path=secret kv-v2 >/dev/null
@@ -108,6 +114,7 @@ echo
 echo "Bootstrap complete."
 echo "- Vault init material: ${INIT_JSON_PATH}"
 echo "- AppRole credentials: ${APP_CREDS_PATH}"
+echo "- Auto token profile: /etc/profile.d/92-vault-dev-root-token.sh"
 echo "- Root token (for lab): ${ROOT_TOKEN}"
 echo
 echo "Quick test (as AppRole token):"

@@ -75,6 +75,9 @@ Bootstrap outputs are written on the VM:
 - `/root/vault-init.json`
 - `/root/vault-app1-creds.json`
 
+Dev convenience added by bootstrap:
+- `/etc/profile.d/92-vault-dev-root-token.sh` auto-exports `VAULT_TOKEN` in new SSH shells.
+
 ## Optional: Cloud SQL integration (Vault dynamic DB creds)
 Prereq: `enable_cloudsql_integration = true` and `terraform apply` completed.
 

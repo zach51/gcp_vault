@@ -125,6 +125,12 @@ resource "google_compute_instance" "vault" {
     chmod 0644 /etc/profile.d/90-dbus-null.sh
     grep -q '^DBUS_SESSION_BUS_ADDRESS=' /etc/environment || echo 'DBUS_SESSION_BUS_ADDRESS=/dev/null' >> /etc/environment
 
+    # Default Vault CLI to local HTTP listener for this lab environment.
+    cat >/etc/profile.d/91-vault-addr.sh <<'PROFILE'
+    export VAULT_ADDR=http://127.0.0.1:8200
+    PROFILE
+    chmod 0644 /etc/profile.d/91-vault-addr.sh
+
     VAULT_ZIP="vault_${var.vault_version}_linux_amd64.zip"
     curl -fsSL "https://releases.hashicorp.com/vault/${var.vault_version}/$${VAULT_ZIP}" -o "/tmp/$${VAULT_ZIP}"
     unzip -o "/tmp/$${VAULT_ZIP}" -d /usr/local/bin/
