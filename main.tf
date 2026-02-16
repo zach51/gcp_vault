@@ -208,7 +208,7 @@ resource "google_sql_database_instance" "cloudsql" {
 
     ip_configuration {
       ipv4_enabled = true
-      require_ssl  = false
+      ssl_mode     = "ALLOW_UNENCRYPTED_AND_ENCRYPTED"
 
       dynamic "authorized_networks" {
         for_each = {
