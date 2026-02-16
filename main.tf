@@ -225,6 +225,8 @@ resource "google_sql_database_instance" "cloudsql" {
   depends_on = [google_project_service.sqladmin]
 }
 
+
+### Only created if "enable_cloudsql_integration" is true in terraform.tfvars ###
 resource "google_sql_database" "app" {
   count    = var.enable_cloudsql_integration ? 1 : 0
   name     = var.cloudsql_database_name
