@@ -1,0 +1,18 @@
+region      = "us-central1"
+zone        = "us-central1-a"
+name_prefix = "vault-lab"
+
+# Replace with your trusted public IP ranges.
+admin_cidrs = [
+  "203.0.113.10/32"
+]
+
+# Optional: set false to keep the VM running 24/7.
+enable_nightly_shutdown   = true
+nightly_shutdown_time_zone = "America/Chicago"
+
+# Optional Cloud SQL integration for Vault dynamic DB credentials testing.
+enable_cloudsql_integration = false
+cloudsql_instance_name      = "vault-lab-pg"
+cloudsql_database_name      = "app"
+cloudsql_admin_username     = "vaultadmin"
