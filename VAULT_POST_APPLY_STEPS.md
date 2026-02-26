@@ -1,101 +1,53 @@
-# Vault Post-Apply Steps (Quick Runbook)
+# Vault Post-Apply Steps (GKE Quick Runbook)
 
 Use this after `terraform apply` in `gcp_vault/`.
 
-## 1. SSH to the VM
+## 1. Configure kubectl
 ```bash
-$(terraform output -raw vault_ssh_command)
+$(terraform output -raw gke_get_credentials_command)
 ```
 
-## 2. Set Vault address and verify service
+## 2. Verify Vault pod/service
+```bash
+kubectl -n $(terraform output -raw vault_namespace) get pods
+kubectl -n $(terraform output -raw vault_namespace) get svc
+```
+
+## 3. Port-forward Vault locally
+```bash
+kubectl -n $(terraform output -raw vault_namespace) \
+  port-forward svc/$(terraform output -raw vault_service_name) 8200:8200
+```
+
+In a second terminal:
 ```bash
 export VAULT_ADDR=http://127.0.0.1:8200
-sudo systemctl status vault --no-pager
 vault status
 ```
 
-If Vault is not reachable:
-```bash
-sudo systemctl restart vault
-sudo journalctl -u vault -n 100 --no-pager
-```
-
-## 3. First-time setup only (new Vault data)
-Run once on a fresh environment:
+## 4. First-time setup only (new Vault data)
 ```bash
 vault operator init
-```
-- Save unseal keys and root token somewhere safe.
-
-Then unseal with 3 different keys:
-```bash
 vault operator unseal
 vault operator unseal
 vault operator unseal
-```
-
-Login:
-```bash
 vault login
 vault status
 ```
 
-## 4. Quick functionality test
+## 5. Quick functionality test
 ```bash
 vault secrets enable -path=secret kv-v2
 vault kv put secret/demo username="zach" password="test123"
 vault kv get secret/demo
 ```
 
-## 5. Open UI
-From your local machine:
-```text
-http://<vault_public_ip>:8200
-```
-
-You can get the URL with:
-```bash
-terraform output -raw vault_url
-```
-
-## Optional: One-command bootstrap (recommended for repeat labs)
+## 6. One-command bootstrap (recommended)
 From your local machine:
 ```bash
 ./scripts/run_vault_lab_bootstrap.sh
 ```
 
-This will SSH to the VM and automate:
-- init (if needed)
-- unseal (if needed)
-- KV enable at `secret/`
-- `app-secrets-rw` policy
-- AppRole `app1`
-
-Bootstrap outputs are written on the VM:
-- `/root/vault-init.json`
-- `/root/vault-app1-creds.json`
-
-Dev convenience added by bootstrap:
-- `/etc/profile.d/92-vault-dev-root-token.sh` auto-exports `VAULT_TOKEN` in new SSH shells.
-
-## Optional: Cloud SQL integration (Vault dynamic DB creds)
-Prereq: `enable_cloudsql_integration = true` and `terraform apply` completed.
-
-From your local machine:
-```bash
-./scripts/run_vault_cloudsql_integration.sh
-```
-
-This configures:
-- `database/config/cloudsql-postgres`
-- `database/roles/app-dynamic-role`
-
-Generated sample credentials are saved on the VM at:
-- `/root/vault-cloudsql-integration.json`
-
-From the VM, you can mint fresh creds anytime:
-```bash
-export VAULT_ADDR=http://127.0.0.1:8200
-export VAULT_TOKEN="$(jq -r '.root_token' /root/vault-init.json)"
-vault read database/creds/app-dynamic-role
-```
+Bootstrap outputs are written locally in `gcp_vault/artifacts/`:
+- `vault-init.json`
+- `vault-app1-creds.json`

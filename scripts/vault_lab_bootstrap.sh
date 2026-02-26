@@ -2,19 +2,15 @@
 set -euo pipefail
 
 export VAULT_ADDR="${VAULT_ADDR:-http://127.0.0.1:8200}"
-export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-/dev/null}"
-INIT_JSON_PATH="/root/vault-init.json"
-APP_CREDS_PATH="/root/vault-app1-creds.json"
+INIT_JSON_PATH="${INIT_JSON_PATH:-./vault-init.json}"
+APP_CREDS_PATH="${APP_CREDS_PATH:-./vault-app1-creds.json}"
 
-if ! command -v vault >/dev/null 2>&1; then
-  echo "vault binary not found on this VM" >&2
-  exit 1
-fi
-
-if ! command -v jq >/dev/null 2>&1; then
-  echo "jq is required but not installed" >&2
-  exit 1
-fi
+for cmd in vault jq curl; do
+  if ! command -v "${cmd}" >/dev/null 2>&1; then
+    echo "Required command not found: ${cmd}" >&2
+    exit 1
+  fi
+done
 
 echo "Waiting for Vault API at ${VAULT_ADDR}..."
 for _ in $(seq 1 60); do
@@ -60,12 +56,6 @@ fi
 
 ROOT_TOKEN="$(jq -r '.root_token' "${INIT_JSON_PATH}")"
 export VAULT_TOKEN="${ROOT_TOKEN}"
-
-# Dev-only convenience: auto-export root token for all future shell sessions.
-cat >/etc/profile.d/92-vault-dev-root-token.sh <<PROFILE
-export VAULT_TOKEN="${ROOT_TOKEN}"
-PROFILE
-chmod 0644 /etc/profile.d/92-vault-dev-root-token.sh
 
 if ! vault secrets list -format=json | jq -e 'has("secret/")' >/dev/null; then
   echo "Enabling KV v2 at secret/..."
@@ -114,9 +104,4 @@ echo
 echo "Bootstrap complete."
 echo "- Vault init material: ${INIT_JSON_PATH}"
 echo "- AppRole credentials: ${APP_CREDS_PATH}"
-echo "- Auto token profile: /etc/profile.d/92-vault-dev-root-token.sh"
 echo "- Root token (for lab): ${ROOT_TOKEN}"
-echo
-echo "Quick test (as AppRole token):"
-echo "VAULT_TOKEN=\"${APP_TOKEN}\" vault kv put secret/app/config username='appuser' password='test123'"
-echo "VAULT_TOKEN=\"${APP_TOKEN}\" vault kv get secret/app/config"

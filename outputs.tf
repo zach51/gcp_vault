@@ -1,40 +1,44 @@
-output "vault_public_ip" {
-  description = "Public IP address for the Vault test VM."
-  value       = google_compute_address.vault_public_ip.address
+output "project_id" {
+  description = "GCP project ID used for this deployment."
+  value       = var.project_id
+}
+
+output "gke_cluster_name" {
+  description = "GKE cluster name hosting Vault."
+  value       = google_container_cluster.vault.name
+}
+
+output "gke_region" {
+  description = "GKE cluster region."
+  value       = var.region
+}
+
+output "gke_get_credentials_command" {
+  description = "Command to configure local kubectl context for this cluster."
+  value       = "gcloud container clusters get-credentials ${google_container_cluster.vault.name} --region ${var.region} --project ${var.project_id}"
+}
+
+output "vault_namespace" {
+  description = "Kubernetes namespace where Vault is deployed."
+  value       = var.kubernetes_namespace
+}
+
+output "vault_release_name" {
+  description = "Vault Helm release name."
+  value       = helm_release.vault.name
+}
+
+output "vault_service_name" {
+  description = "Kubernetes service name for Vault API/UI."
+  value       = data.kubernetes_service.vault.metadata[0].name
+}
+
+output "vault_external_ip" {
+  description = "External IP for the Vault LoadBalancer service (empty until assigned)."
+  value       = try(data.kubernetes_service.vault.status[0].load_balancer[0].ingress[0].ip, "")
 }
 
 output "vault_url" {
-  description = "Vault API/UI URL."
-  value       = "http://${google_compute_address.vault_public_ip.address}:8200"
-}
-
-output "vault_ssh_command" {
-  description = "SSH command to access the Vault VM."
-  value       = "gcloud compute ssh ${google_compute_instance.vault.name} --zone ${var.zone} --project ${var.project_id}"
-}
-
-output "cloudsql_instance_name" {
-  description = "Cloud SQL instance name for Vault integration testing."
-  value       = try(google_sql_database_instance.cloudsql[0].name, "")
-}
-
-output "cloudsql_public_ip" {
-  description = "Cloud SQL public IP address (empty if integration is disabled)."
-  value       = try(google_sql_database_instance.cloudsql[0].public_ip_address, "")
-}
-
-output "cloudsql_database_name" {
-  description = "Cloud SQL database name used in integration tests."
-  value       = var.cloudsql_database_name
-}
-
-output "cloudsql_admin_username" {
-  description = "Cloud SQL admin username used by Vault database plugin."
-  value       = var.cloudsql_admin_username
-}
-
-output "cloudsql_admin_password" {
-  description = "Cloud SQL admin password used by Vault database plugin."
-  value       = try(random_password.cloudsql_admin[0].result, "")
-  sensitive   = true
+  description = "Vault API/UI URL (may be empty until service IP assignment finishes)."
+  value       = try("http://${data.kubernetes_service.vault.status[0].load_balancer[0].ingress[0].ip}:8200", "")
 }

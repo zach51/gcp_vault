@@ -1,23 +1,21 @@
-# Vault on GCE VM (Terraform)
+# Vault on GKE (Terraform)
 
-This stack deploys a single-node Vault lab on a Google Compute Engine VM.
+This stack deploys a single-node Vault lab on a GKE cluster using the official HashiCorp Helm chart.
 
 For repeat setup after `terraform apply`, use `VAULT_POST_APPLY_STEPS.md`.
 
 ## What it creates
-- Dedicated VPC + subnet
-- Firewall rules for SSH (22) and Vault API/UI (8200) from `admin_cidrs`
-- Static public IP
-- Service account for the VM
-- Debian VM with Vault installed and managed by `systemd`
-- Optional Cloud SQL Postgres instance for Vault database secrets testing
+- Dedicated VPC + subnet (+ secondary ranges for pods/services)
+- Regional GKE cluster + managed node pool
+- Kubernetes namespace for Vault
+- Vault Helm release (`standalone` mode with persistent storage)
+- Public LoadBalancer service for Vault API/UI on `8200`, restricted by `admin_cidrs`
 
 ## Lab scope
 This is intentionally a learning/testing setup:
-- Single node
-- `storage "file"`
+- Single Vault server (`standalone`)
+- `storage "file"` on a PVC
 - TLS disabled (`http://...:8200`)
-- Auto-stop at `2:00 AM` daily (default, configurable timezone)
 
 Do not use this profile as production Vault.
 
@@ -39,63 +37,36 @@ Do not use this profile as production Vault.
    terraform apply
    ```
 
-## Nightly Auto-Shutdown
-- Default behavior is to stop the VM every day at `2:00 AM`.
-- Timezone is controlled by `nightly_shutdown_time_zone` (default `America/Chicago`).
-- Set `enable_nightly_shutdown = false` if you want it to stay on.
+## Connect kubectl to the cluster
+```bash
+$(terraform output -raw gke_get_credentials_command)
+```
 
 ## Initialize and unseal Vault
-1. SSH to the VM:
-   ```bash
-   $(terraform output -raw vault_ssh_command)
-   ```
-2. On the VM:
-   ```bash
-   export VAULT_ADDR=http://127.0.0.1:8200
-   vault operator init
-   vault operator unseal
-   vault login
-   vault status
-   ```
+Run the helper script from `gcp_vault/`:
+```bash
+./scripts/run_vault_lab_bootstrap.sh
+```
+
+It will:
+- open a local port-forward to Vault (`127.0.0.1:8200`)
+- initialize/unseal Vault (if needed)
+- configure KV + sample AppRole
+- save artifacts to `gcp_vault/artifacts/`
 
 ## Access the UI
-```text
-http://<vault_public_ip>:8200
+If LoadBalancer IP is ready:
+```bash
+terraform output -raw vault_url
 ```
+
+You can also use local port-forward:
+```bash
+kubectl -n $(terraform output -raw vault_namespace) port-forward svc/$(terraform output -raw vault_service_name) 8200:8200
+```
+Then open `http://127.0.0.1:8200`.
 
 ## Destroy
 ```bash
 terraform destroy
 ```
-
-## One-command Vault Bootstrap
-After `terraform apply`, from `gcp_vault/`:
-```bash
-./scripts/run_vault_lab_bootstrap.sh
-```
-
-This runs a bootstrap script on the VM that initializes/unseals Vault (as needed) and creates baseline app auth/policy.
-
-Lab credential files are stored on the VM at:
-- `/root/vault-init.json`
-- `/root/vault-app1-creds.json`
-- `/etc/profile.d/92-vault-dev-root-token.sh` (dev-only auto-export of `VAULT_TOKEN`)
-
-## Optional: Cloud SQL Integration Test
-1. Enable Cloud SQL in `terraform.tfvars` and apply:
-   ```hcl
-   enable_cloudsql_integration = true
-   ```
-   ```bash
-   terraform apply
-   ```
-2. Bootstrap Vault base config (if not already done):
-   ```bash
-   ./scripts/run_vault_lab_bootstrap.sh
-   ```
-3. Configure Vault database secrets engine for Cloud SQL:
-   ```bash
-   ./scripts/run_vault_cloudsql_integration.sh
-   ```
-
-This creates a Vault database config (`cloudsql-postgres`) and role (`app-dynamic-role`) and fetches sample dynamic credentials.

@@ -1,241 +1,205 @@
 locals {
-  vault_name = "${var.name_prefix}-vm"
-  cloudsql_allowed_cidrs = distinct(concat(
-    var.admin_cidrs,
-    ["${google_compute_address.vault_public_ip.address}/32"]
-  ))
+  cluster_name         = "${var.name_prefix}-gke"
+  node_pool_name       = "${var.name_prefix}-pool"
+  vpc_name             = "${var.name_prefix}-vpc"
+  subnet_name          = "${var.name_prefix}-subnet"
+  pods_range_name      = "${var.name_prefix}-pods"
+  services_range_name  = "${var.name_prefix}-services"
+  node_service_account = "${var.name_prefix}-gke-nodes"
+  vault_storage_config = var.vault_storage_class == "" ? { enabled = true, size = var.vault_storage_size } : { enabled = true, size = var.vault_storage_size, storageClass = var.vault_storage_class }
 }
 
-resource "google_project_service" "sqladmin" {
-  count              = var.enable_cloudsql_integration ? 1 : 0
+resource "google_project_service" "container" {
   project            = var.project_id
-  service            = "sqladmin.googleapis.com"
+  service            = "container.googleapis.com"
+  disable_on_destroy = false
+}
+
+resource "google_project_service" "compute" {
+  project            = var.project_id
+  service            = "compute.googleapis.com"
   disable_on_destroy = false
 }
 
 resource "google_compute_network" "vault" {
-  name                    = "${var.name_prefix}-vpc"
+  name                    = local.vpc_name
   auto_create_subnetworks = false
 }
 
 resource "google_compute_subnetwork" "vault" {
-  name                     = "${var.name_prefix}-subnet"
+  name                     = local.subnet_name
   region                   = var.region
   network                  = google_compute_network.vault.id
   ip_cidr_range            = var.network_cidr
   private_ip_google_access = true
-}
 
-resource "google_compute_firewall" "allow_ssh" {
-  name    = "${var.name_prefix}-allow-ssh"
-  network = google_compute_network.vault.name
-
-  allow {
-    protocol = "tcp"
-    ports    = ["22"]
+  secondary_ip_range {
+    range_name    = local.pods_range_name
+    ip_cidr_range = var.pods_secondary_cidr
   }
 
-  source_ranges = var.admin_cidrs
-  target_tags   = ["vault"]
-}
-
-resource "google_compute_firewall" "allow_vault_api" {
-  name    = "${var.name_prefix}-allow-vault"
-  network = google_compute_network.vault.name
-
-  allow {
-    protocol = "tcp"
-    ports    = ["8200"]
+  secondary_ip_range {
+    range_name    = local.services_range_name
+    ip_cidr_range = var.services_secondary_cidr
   }
-
-  source_ranges = var.admin_cidrs
-  target_tags   = ["vault"]
 }
 
-resource "google_service_account" "vault_vm" {
-  account_id   = "${var.name_prefix}-sa"
-  display_name = "Vault Lab VM Service Account"
+resource "google_service_account" "gke_nodes" {
+  account_id   = local.node_service_account
+  display_name = "Vault GKE Node Pool Service Account"
 }
 
-resource "google_project_iam_member" "vault_vm_logging" {
+resource "google_project_iam_member" "gke_nodes_logging" {
   project = var.project_id
   role    = "roles/logging.logWriter"
-  member  = "serviceAccount:${google_service_account.vault_vm.email}"
+  member  = "serviceAccount:${google_service_account.gke_nodes.email}"
 }
 
-resource "google_compute_address" "vault_public_ip" {
-  name   = "${var.name_prefix}-ip"
-  region = var.region
+resource "google_project_iam_member" "gke_nodes_monitoring" {
+  project = var.project_id
+  role    = "roles/monitoring.metricWriter"
+  member  = "serviceAccount:${google_service_account.gke_nodes.email}"
 }
 
-resource "google_compute_resource_policy" "nightly_stop" {
-  count  = var.enable_nightly_shutdown ? 1 : 0
-  name   = "${var.name_prefix}-nightly-stop"
-  region = var.region
-
-  instance_schedule_policy {
-    vm_stop_schedule {
-      schedule = "0 2 * * *"
-    }
-
-    time_zone = var.nightly_shutdown_time_zone
-  }
+resource "google_project_iam_member" "gke_nodes_artifact_registry" {
+  project = var.project_id
+  role    = "roles/artifactregistry.reader"
+  member  = "serviceAccount:${google_service_account.gke_nodes.email}"
 }
 
-resource "google_compute_instance" "vault" {
-  name         = local.vault_name
-  machine_type = var.machine_type
-  zone         = var.zone
-  tags         = ["vault"]
-  resource_policies = var.enable_nightly_shutdown ? [
-    google_compute_resource_policy.nightly_stop[0].self_link
-  ] : []
+resource "google_container_cluster" "vault" {
+  name                     = local.cluster_name
+  location                 = var.region
+  network                  = google_compute_network.vault.id
+  subnetwork               = google_compute_subnetwork.vault.id
+  remove_default_node_pool = true
+  initial_node_count       = 1
+  deletion_protection      = false
 
-  boot_disk {
-    initialize_params {
-      image = "debian-cloud/debian-12"
-      size  = var.boot_disk_size_gb
-      type  = "pd-balanced"
-    }
+  release_channel {
+    channel = var.gke_release_channel
   }
 
-  network_interface {
-    subnetwork = google_compute_subnetwork.vault.id
-    access_config {
-      nat_ip = google_compute_address.vault_public_ip.address
+  ip_allocation_policy {
+    cluster_secondary_range_name  = local.pods_range_name
+    services_secondary_range_name = local.services_range_name
+  }
+
+  workload_identity_config {
+    workload_pool = "${var.project_id}.svc.id.goog"
+  }
+
+  depends_on = [
+    google_project_service.container,
+    google_project_service.compute,
+  ]
+}
+
+resource "google_container_node_pool" "vault" {
+  name       = local.node_pool_name
+  location   = var.region
+  cluster    = google_container_cluster.vault.name
+  node_count = var.gke_node_count
+
+  autoscaling {
+    min_node_count = var.gke_min_node_count
+    max_node_count = var.gke_max_node_count
+  }
+
+  management {
+    auto_repair  = true
+    auto_upgrade = true
+  }
+
+  node_config {
+    machine_type    = var.gke_node_machine_type
+    service_account = google_service_account.gke_nodes.email
+    oauth_scopes    = ["https://www.googleapis.com/auth/cloud-platform"]
+
+    labels = {
+      workload = "vault"
     }
   }
 
-  service_account {
-    email  = google_service_account.vault_vm.email
-    scopes = ["cloud-platform"]
+  depends_on = [
+    google_project_iam_member.gke_nodes_logging,
+    google_project_iam_member.gke_nodes_monitoring,
+    google_project_iam_member.gke_nodes_artifact_registry,
+  ]
+}
+
+resource "kubernetes_namespace" "vault" {
+  metadata {
+    name = var.kubernetes_namespace
   }
 
-  metadata_startup_script = <<-EOT
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    apt-get update -y
-    apt-get install -y curl unzip jq postgresql-client
-
-    # Suppress non-fatal DBUS warnings in headless SSH/systemd sessions.
-    cat >/etc/profile.d/90-dbus-null.sh <<'PROFILE'
-    export DBUS_SESSION_BUS_ADDRESS=/dev/null
-    PROFILE
-    chmod 0644 /etc/profile.d/90-dbus-null.sh
-    grep -q '^DBUS_SESSION_BUS_ADDRESS=' /etc/environment || echo 'DBUS_SESSION_BUS_ADDRESS=/dev/null' >> /etc/environment
-
-    # Default Vault CLI to local HTTP listener for this lab environment.
-    cat >/etc/profile.d/91-vault-addr.sh <<'PROFILE'
-    export VAULT_ADDR=http://127.0.0.1:8200
-    PROFILE
-    chmod 0644 /etc/profile.d/91-vault-addr.sh
-
-    VAULT_ZIP="vault_${var.vault_version}_linux_amd64.zip"
-    curl -fsSL "https://releases.hashicorp.com/vault/${var.vault_version}/$${VAULT_ZIP}" -o "/tmp/$${VAULT_ZIP}"
-    unzip -o "/tmp/$${VAULT_ZIP}" -d /usr/local/bin/
-    chmod 0755 /usr/local/bin/vault
-
-    useradd --system --home /etc/vault.d --shell /bin/false vault || true
-    mkdir -p /etc/vault.d /opt/vault/data /var/log/vault
-    chown -R vault:vault /etc/vault.d /opt/vault /var/log/vault
-
-    EXTERNAL_IP=$(curl -s -H Metadata-Flavor:Google http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip)
-
-    cat >/etc/vault.d/vault.hcl <<CONFIG
-    ui = true
-    disable_mlock = true
-
-    listener "tcp" {
-      address     = "0.0.0.0:8200"
-      tls_disable = "true"
-    }
-
-    storage "file" {
-      path = "/opt/vault/data"
-    }
-
-    api_addr = "http://$${EXTERNAL_IP}:8200"
-    cluster_addr = "http://127.0.0.1:8201"
-    CONFIG
-
-    cat >/etc/systemd/system/vault.service <<'SERVICE'
-    [Unit]
-    Description=HashiCorp Vault
-    Documentation=https://developer.hashicorp.com/vault/docs
-    Requires=network-online.target
-    After=network-online.target
-
-    [Service]
-    User=vault
-    Group=vault
-    Environment=DBUS_SESSION_BUS_ADDRESS=/dev/null
-    ExecStart=/usr/local/bin/vault server -config=/etc/vault.d/vault.hcl
-    ExecReload=/bin/kill -HUP $MAINPID
-    KillMode=process
-    KillSignal=SIGINT
-    Restart=on-failure
-    RestartSec=5
-    LimitNOFILE=65536
-
-    [Install]
-    WantedBy=multi-user.target
-    SERVICE
-
-    systemctl daemon-reload
-    systemctl enable vault
-    systemctl start vault
-  EOT
-
-  depends_on = [google_project_iam_member.vault_vm_logging]
+  depends_on = [google_container_node_pool.vault]
 }
 
-resource "random_password" "cloudsql_admin" {
-  count   = var.enable_cloudsql_integration ? 1 : 0
-  length  = 24
-  special = true
-}
+resource "helm_release" "vault" {
+  name             = var.vault_release_name
+  repository       = "https://helm.releases.hashicorp.com"
+  chart            = "vault"
+  version          = var.vault_helm_chart_version
+  namespace        = kubernetes_namespace.vault.metadata[0].name
+  create_namespace = false
+  wait             = true
+  timeout          = 900
 
-resource "google_sql_database_instance" "cloudsql" {
-  count               = var.enable_cloudsql_integration ? 1 : 0
-  name                = var.cloudsql_instance_name
-  region              = var.region
-  database_version    = var.cloudsql_postgres_version
-  deletion_protection = false
-
-  settings {
-    tier = var.cloudsql_tier
-
-    ip_configuration {
-      ipv4_enabled = true
-      ssl_mode     = "ALLOW_UNENCRYPTED_AND_ENCRYPTED"
-
-      dynamic "authorized_networks" {
-        for_each = {
-          for idx, cidr in local.cloudsql_allowed_cidrs : idx => cidr
+  values = [
+    yamlencode({
+      injector = {
+        enabled = false
+      }
+      global = {
+        tlsDisable = true
+      }
+      server = {
+        image = {
+          tag = var.vault_version
         }
-        content {
-          name  = "allow-${authorized_networks.key}"
-          value = authorized_networks.value
+        logLevel = var.vault_log_level
+        standalone = {
+          enabled = true
+          config  = <<-EOT
+            ui = true
+            disable_mlock = true
+
+            listener "tcp" {
+              address         = "[::]:8200"
+              cluster_address = "[::]:8201"
+              tls_disable     = 1
+            }
+
+            storage "file" {
+              path = "/vault/data"
+            }
+          EOT
+        }
+        dataStorage = local.vault_storage_config
+        service = {
+          enabled                  = true
+          type                     = "LoadBalancer"
+          port                     = 8200
+          loadBalancerSourceRanges = var.admin_cidrs
+          annotations              = var.vault_service_annotations
         }
       }
-    }
+      ui = {
+        enabled     = true
+        serviceType = "ClusterIP"
+      }
+    })
+  ]
+
+  depends_on = [kubernetes_namespace.vault]
+}
+
+data "kubernetes_service" "vault" {
+  metadata {
+    name      = var.vault_release_name
+    namespace = var.kubernetes_namespace
   }
 
-  depends_on = [google_project_service.sqladmin]
-}
-
-
-### Only created if "enable_cloudsql_integration" is true in terraform.tfvars ###
-resource "google_sql_database" "app" {
-  count    = var.enable_cloudsql_integration ? 1 : 0
-  name     = var.cloudsql_database_name
-  instance = google_sql_database_instance.cloudsql[0].name
-}
-
-resource "google_sql_user" "vault_admin" {
-  count    = var.enable_cloudsql_integration ? 1 : 0
-  name     = var.cloudsql_admin_username
-  instance = google_sql_database_instance.cloudsql[0].name
-  password = random_password.cloudsql_admin[0].result
+  depends_on = [helm_release.vault]
 }

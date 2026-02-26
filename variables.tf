@@ -11,7 +11,7 @@ variable "region" {
 }
 
 variable "zone" {
-  description = "GCP zone for the Vault VM."
+  description = "GCP zone used by the Google provider (required by some gcloud commands)."
   type        = string
   default     = "us-central1-a"
 }
@@ -22,79 +22,109 @@ variable "name_prefix" {
   default     = "vault-lab"
 }
 
-variable "machine_type" {
-  description = "Machine type for the Vault VM."
-  type        = string
-  default     = "e2-medium"
-}
-
-variable "vault_version" {
-  description = "Vault version to install on the VM."
-  type        = string
-  default     = "1.17.5"
-}
-
 variable "admin_cidrs" {
-  description = "CIDR ranges allowed to reach SSH and Vault API/UI (8200)."
+  description = "CIDR ranges allowed to reach the Vault LoadBalancer service (port 8200)."
   type        = list(string)
 }
 
 variable "network_cidr" {
-  description = "Primary CIDR block for the Vault lab subnet."
+  description = "Primary CIDR block for the GKE subnet."
   type        = string
-  default     = "10.70.0.0/24"
+  default     = "10.70.0.0/20"
 }
 
-variable "boot_disk_size_gb" {
-  description = "Boot disk size for the Vault VM."
+variable "pods_secondary_cidr" {
+  description = "Secondary CIDR block for GKE pods."
+  type        = string
+  default     = "10.71.0.0/16"
+}
+
+variable "services_secondary_cidr" {
+  description = "Secondary CIDR block for GKE services."
+  type        = string
+  default     = "10.72.0.0/20"
+}
+
+variable "gke_release_channel" {
+  description = "GKE release channel."
+  type        = string
+  default     = "REGULAR"
+
+  validation {
+    condition     = contains(["RAPID", "REGULAR", "STABLE", "UNSPECIFIED"], var.gke_release_channel)
+    error_message = "gke_release_channel must be RAPID, REGULAR, STABLE, or UNSPECIFIED."
+  }
+}
+
+variable "gke_node_machine_type" {
+  description = "Machine type for GKE nodes."
+  type        = string
+  default     = "e2-standard-2"
+}
+
+variable "gke_node_count" {
+  description = "Initial node count for the Vault node pool."
   type        = number
-  default     = 30
+  default     = 1
 }
 
-variable "enable_nightly_shutdown" {
-  description = "Whether to auto-stop the Vault VM nightly at 2:00 AM."
-  type        = bool
-  default     = true
+variable "gke_min_node_count" {
+  description = "Autoscaler minimum node count."
+  type        = number
+  default     = 1
 }
 
-variable "nightly_shutdown_time_zone" {
-  description = "IANA time zone used for the nightly VM shutdown schedule."
+variable "gke_max_node_count" {
+  description = "Autoscaler maximum node count."
+  type        = number
+  default     = 3
+}
+
+variable "kubernetes_namespace" {
+  description = "Kubernetes namespace where Vault will be deployed."
   type        = string
-  default     = "America/Chicago"
+  default     = "vault"
 }
 
-variable "enable_cloudsql_integration" {
-  description = "Whether to create a Cloud SQL Postgres instance for Vault database secrets testing."
-  type        = bool
-  default     = false
-}
-
-variable "cloudsql_instance_name" {
-  description = "Cloud SQL instance name for Vault integration testing."
+variable "vault_release_name" {
+  description = "Helm release name for Vault."
   type        = string
-  default     = "vault-lab-pg"
+  default     = "vault"
 }
 
-variable "cloudsql_postgres_version" {
-  description = "Cloud SQL Postgres engine version."
+variable "vault_version" {
+  description = "Vault image tag used by the Helm chart."
   type        = string
-  default     = "POSTGRES_15"
+  default     = "1.17.5"
 }
 
-variable "cloudsql_tier" {
-  description = "Cloud SQL machine tier."
+variable "vault_helm_chart_version" {
+  description = "Optional HashiCorp Vault Helm chart version (null uses latest available)."
   type        = string
-  default     = "db-custom-1-3840"
+  default     = null
+  nullable    = true
 }
 
-variable "cloudsql_database_name" {
-  description = "Database name used for Vault dynamic credential grants."
+variable "vault_storage_size" {
+  description = "Persistent volume size for Vault data."
   type        = string
-  default     = "app"
+  default     = "10Gi"
 }
 
-variable "cloudsql_admin_username" {
-  description = "Cloud SQL admin username used by Vault database plugin."
+variable "vault_storage_class" {
+  description = "Optional Kubernetes storage class for Vault PVC (empty uses cluster default)."
   type        = string
-  default     = "vaultadmin"
+  default     = ""
+}
+
+variable "vault_log_level" {
+  description = "Vault server log level."
+  type        = string
+  default     = "info"
+}
+
+variable "vault_service_annotations" {
+  description = "Annotations to apply to the Vault service."
+  type        = map(string)
+  default     = {}
 }
