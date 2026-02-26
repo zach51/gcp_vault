@@ -4,6 +4,8 @@ set -euo pipefail
 export VAULT_ADDR="${VAULT_ADDR:-http://127.0.0.1:8200}"
 INIT_JSON_PATH="${INIT_JSON_PATH:-./vault-init.json}"
 APP_CREDS_PATH="${APP_CREDS_PATH:-./vault-app1-creds.json}"
+ROOT_TOKEN_PATH="${ROOT_TOKEN_PATH:-$(dirname "${INIT_JSON_PATH}")/vault-root-token.txt}"
+VAULT_ENV_PATH="${VAULT_ENV_PATH:-$(dirname "${INIT_JSON_PATH}")/vault-dev.env}"
 
 for cmd in vault jq curl; do
   if ! command -v "${cmd}" >/dev/null 2>&1; then
@@ -56,6 +58,14 @@ fi
 
 ROOT_TOKEN="$(jq -r '.root_token' "${INIT_JSON_PATH}")"
 export VAULT_TOKEN="${ROOT_TOKEN}"
+printf '%s\n' "${ROOT_TOKEN}" > "${ROOT_TOKEN_PATH}"
+chmod 644 "${ROOT_TOKEN_PATH}"
+
+cat > "${VAULT_ENV_PATH}" <<EOF
+export VAULT_ADDR="${VAULT_ADDR}"
+export VAULT_TOKEN="${ROOT_TOKEN}"
+EOF
+chmod 644 "${VAULT_ENV_PATH}"
 
 if ! vault secrets list -format=json | jq -e 'has("secret/")' >/dev/null; then
   echo "Enabling KV v2 at secret/..."
@@ -104,4 +114,6 @@ echo
 echo "Bootstrap complete."
 echo "- Vault init material: ${INIT_JSON_PATH}"
 echo "- AppRole credentials: ${APP_CREDS_PATH}"
+echo "- Root token file: ${ROOT_TOKEN_PATH}"
+echo "- Sourceable env file: ${VAULT_ENV_PATH}"
 echo "- Root token (for lab): ${ROOT_TOKEN}"

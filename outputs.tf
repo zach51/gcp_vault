@@ -8,14 +8,14 @@ output "gke_cluster_name" {
   value       = google_container_cluster.vault.name
 }
 
-output "gke_region" {
-  description = "GKE cluster region."
-  value       = var.region
+output "gke_zone" {
+  description = "GKE cluster zone."
+  value       = var.zone
 }
 
 output "gke_get_credentials_command" {
   description = "Command to configure local kubectl context for this cluster."
-  value       = "gcloud container clusters get-credentials ${google_container_cluster.vault.name} --region ${var.region} --project ${var.project_id}"
+  value       = "gcloud container clusters get-credentials ${google_container_cluster.vault.name} --zone ${var.zone} --project ${var.project_id}"
 }
 
 output "vault_namespace" {
@@ -41,4 +41,19 @@ output "vault_external_ip" {
 output "vault_url" {
   description = "Vault API/UI URL (may be empty until service IP assignment finishes)."
   value       = try("http://${data.kubernetes_service.vault.status[0].load_balancer[0].ingress[0].ip}:8200", "")
+}
+
+output "scheduled_scale_down_enabled" {
+  description = "Whether off-hours node pool scale down scheduling is enabled."
+  value       = var.enable_scheduled_scale_down
+}
+
+output "scheduled_scale_down_cron" {
+  description = "Cron expression used for nightly node pool scale down."
+  value       = var.scheduled_scale_down_cron
+}
+
+output "scheduled_scale_up_cron" {
+  description = "Cron expression used for morning node pool scale up."
+  value       = var.scheduled_scale_up_cron
 }

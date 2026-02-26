@@ -59,13 +59,19 @@ variable "gke_release_channel" {
 variable "gke_node_machine_type" {
   description = "Machine type for GKE nodes."
   type        = string
-  default     = "e2-standard-2"
+  default     = "e2-medium"
 }
 
 variable "gke_node_count" {
   description = "Initial node count for the Vault node pool."
   type        = number
   default     = 1
+}
+
+variable "gke_enable_autoscaling" {
+  description = "Enable GKE node pool autoscaling. Keep false when using scheduled scale down."
+  type        = bool
+  default     = false
 }
 
 variable "gke_min_node_count" {
@@ -77,7 +83,55 @@ variable "gke_min_node_count" {
 variable "gke_max_node_count" {
   description = "Autoscaler maximum node count."
   type        = number
-  default     = 3
+  default     = 1
+}
+
+variable "gke_node_disk_size_gb" {
+  description = "Boot disk size in GB for GKE nodes."
+  type        = number
+  default     = 30
+}
+
+variable "gke_node_disk_type" {
+  description = "Boot disk type for GKE nodes."
+  type        = string
+  default     = "pd-standard"
+}
+
+variable "gke_preemptible_nodes" {
+  description = "Whether GKE nodes should be preemptible (cheaper, can be reclaimed by GCP)."
+  type        = bool
+  default     = true
+}
+
+variable "enable_scheduled_scale_down" {
+  description = "Whether to automatically scale the Vault node pool to 0 during off-hours and restore it daily."
+  type        = bool
+  default     = true
+}
+
+variable "scheduled_scale_down_cron" {
+  description = "Cron schedule for scaling node pool down to 0."
+  type        = string
+  default     = "0 2 * * *"
+}
+
+variable "scheduled_scale_up_cron" {
+  description = "Cron schedule for restoring node pool size."
+  type        = string
+  default     = "0 7 * * *"
+}
+
+variable "scheduled_scale_timezone" {
+  description = "IANA timezone for scheduled node pool scale jobs."
+  type        = string
+  default     = "America/Chicago"
+}
+
+variable "scheduled_daytime_node_count" {
+  description = "Node count to restore during scheduled scale-up."
+  type        = number
+  default     = 1
 }
 
 variable "kubernetes_namespace" {

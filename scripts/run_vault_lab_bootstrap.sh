@@ -4,6 +4,34 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TF_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ARTIFACT_DIR="${TF_DIR}/artifacts"
+KEEP_PORT_FORWARD=false
+
+usage() {
+  cat <<'EOF'
+Usage: run_vault_lab_bootstrap.sh [--keep-port-forward]
+
+Options:
+  --keep-port-forward   Leave kubectl port-forward running after bootstrap.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --keep-port-forward)
+      KEEP_PORT_FORWARD=true
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
 
 if [[ ! -f "${SCRIPT_DIR}/vault_lab_bootstrap.sh" ]]; then
   echo "Missing ${SCRIPT_DIR}/vault_lab_bootstrap.sh" >&2
@@ -21,12 +49,12 @@ cd "${TF_DIR}"
 
 PROJECT_ID="$(terraform output -raw project_id)"
 CLUSTER_NAME="$(terraform output -raw gke_cluster_name)"
-REGION="$(terraform output -raw gke_region)"
+ZONE="$(terraform output -raw gke_zone)"
 NAMESPACE="$(terraform output -raw vault_namespace)"
 SERVICE_NAME="$(terraform output -raw vault_service_name)"
 
-echo "Configuring kube context for ${CLUSTER_NAME} (${REGION})..."
-gcloud container clusters get-credentials "${CLUSTER_NAME}" --region "${REGION}" --project "${PROJECT_ID}" >/dev/null
+echo "Configuring kube context for ${CLUSTER_NAME} (${ZONE})..."
+gcloud container clusters get-credentials "${CLUSTER_NAME}" --zone "${ZONE}" --project "${PROJECT_ID}" >/dev/null
 
 mkdir -p "${ARTIFACT_DIR}"
 
@@ -60,3 +88,12 @@ VAULT_ADDR="http://127.0.0.1:8200" \
 "${SCRIPT_DIR}/vault_lab_bootstrap.sh"
 
 echo "Bootstrap finished. Artifacts written to ${ARTIFACT_DIR}."
+echo "Quick load for Vault CLI:"
+echo "source ${ARTIFACT_DIR}/vault-dev.env"
+
+if [[ "${KEEP_PORT_FORWARD}" == "true" ]]; then
+  trap - EXIT
+  echo "Port-forward is still running (pid ${PF_PID})."
+  echo "Use VAULT_ADDR=http://127.0.0.1:8200 in another terminal."
+  wait "${PF_PID}"
+fi

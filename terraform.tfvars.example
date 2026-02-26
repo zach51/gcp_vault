@@ -9,10 +9,21 @@ admin_cidrs = [
 ]
 
 # Optional sizing and scaling knobs
-gke_node_machine_type = "e2-standard-2"
+gke_node_machine_type = "e2-medium"
 gke_node_count        = 1
+gke_enable_autoscaling = false
 gke_min_node_count    = 1
-gke_max_node_count    = 3
+gke_max_node_count    = 1
+gke_preemptible_nodes = true
+gke_node_disk_size_gb = 30
+gke_node_disk_type    = "pd-standard"
+
+# Automatic off-hours scale-to-zero (Vault unavailable while scaled down)
+enable_scheduled_scale_down = true
+scheduled_scale_down_cron   = "0 2 * * *"
+scheduled_scale_up_cron     = "0 7 * * *"
+scheduled_scale_timezone    = "America/Chicago"
+scheduled_daytime_node_count = 1
 
 # Optional: pin a chart version, otherwise Terraform uses latest available
 # vault_helm_chart_version = "0.28.0"

@@ -2,6 +2,8 @@
 
 Use this after `terraform apply` in `gcp_vault/`.
 
+Note: this stack is configured by default to scale the node pool to `0` during off-hours and restore it in the morning. If you run this runbook during scheduled downtime, Vault will be unavailable until scale-up occurs.
+
 ## 1. Configure kubectl
 ```bash
 $(terraform output -raw gke_get_credentials_command)
@@ -46,6 +48,10 @@ vault kv get secret/demo
 From your local machine:
 ```bash
 ./scripts/run_vault_lab_bootstrap.sh
+```
+Or keep port-forward running after bootstrap:
+```bash
+./scripts/run_vault_lab_bootstrap.sh --keep-port-forward
 ```
 
 Bootstrap outputs are written locally in `gcp_vault/artifacts/`:
