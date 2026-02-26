@@ -30,17 +30,22 @@ output "vault_release_name" {
 
 output "vault_service_name" {
   description = "Kubernetes service name for Vault API/UI."
-  value       = data.kubernetes_service.vault.metadata[0].name
+  value       = var.vault_release_name
 }
 
 output "vault_external_ip" {
-  description = "External IP for the Vault LoadBalancer service (empty until assigned)."
-  value       = try(data.kubernetes_service.vault.status[0].load_balancer[0].ingress[0].ip, "")
+  description = "External IP for the Vault LoadBalancer service (lookup via kubectl)."
+  value       = ""
 }
 
 output "vault_url" {
-  description = "Vault API/UI URL (may be empty until service IP assignment finishes)."
-  value       = try("http://${data.kubernetes_service.vault.status[0].load_balancer[0].ingress[0].ip}:8200", "")
+  description = "Vault API/UI URL (lookup via kubectl)."
+  value       = ""
+}
+
+output "vault_lb_lookup_command" {
+  description = "Command to retrieve current Vault LoadBalancer IP."
+  value       = "kubectl -n ${var.kubernetes_namespace} get svc ${var.vault_release_name} -o jsonpath='{.status.loadBalancer.ingress[0].ip}'"
 }
 
 output "scheduled_scale_down_enabled" {

@@ -68,7 +68,8 @@ vault status
 ## Access the UI
 If LoadBalancer IP is ready:
 ```bash
-terraform output -raw vault_url
+LB_IP="$($(terraform output -raw vault_lb_lookup_command))"
+echo "http://${LB_IP}:8200"
 ```
 
 You can also use local port-forward:

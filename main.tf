@@ -214,21 +214,13 @@ resource "google_cloud_scheduler_job" "scale_up" {
   ]
 }
 
-resource "kubernetes_namespace" "vault" {
-  metadata {
-    name = var.kubernetes_namespace
-  }
-
-  depends_on = [google_container_node_pool.vault]
-}
-
 resource "helm_release" "vault" {
   name             = var.vault_release_name
   repository       = "https://helm.releases.hashicorp.com"
   chart            = "vault"
   version          = var.vault_helm_chart_version
-  namespace        = kubernetes_namespace.vault.metadata[0].name
-  create_namespace = false
+  namespace        = var.kubernetes_namespace
+  create_namespace = true
   wait             = true
   timeout          = 900
 
@@ -278,14 +270,5 @@ resource "helm_release" "vault" {
     })
   ]
 
-  depends_on = [kubernetes_namespace.vault]
-}
-
-data "kubernetes_service" "vault" {
-  metadata {
-    name      = var.vault_release_name
-    namespace = var.kubernetes_namespace
-  }
-
-  depends_on = [helm_release.vault]
+  depends_on = [google_container_node_pool.vault]
 }
