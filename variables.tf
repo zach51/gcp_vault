@@ -59,7 +59,7 @@ variable "gke_release_channel" {
 variable "gke_node_machine_type" {
   description = "Machine type for GKE nodes."
   type        = string
-  default     = "e2-medium"
+  default     = "e2-small"
 }
 
 variable "gke_node_count" {
@@ -89,7 +89,7 @@ variable "gke_max_node_count" {
 variable "gke_node_disk_size_gb" {
   description = "Boot disk size in GB for GKE nodes."
   type        = number
-  default     = 30
+  default     = 20
 }
 
 variable "gke_node_disk_type" {
@@ -162,13 +162,37 @@ variable "vault_helm_chart_version" {
 variable "vault_storage_size" {
   description = "Persistent volume size for Vault data."
   type        = string
-  default     = "10Gi"
+  default     = "5Gi"
 }
 
 variable "vault_storage_class" {
   description = "Optional Kubernetes storage class for Vault PVC (empty uses cluster default)."
   type        = string
   default     = ""
+}
+
+variable "vault_auto_unseal_gcpkms_enabled" {
+  description = "Enable Vault auto-unseal using Google Cloud KMS."
+  type        = bool
+  default     = true
+}
+
+variable "vault_gcpkms_key_ring_name" {
+  description = "Optional name for the KMS key ring used by Vault auto-unseal (empty uses <name_prefix>-vault-gcpkms-keyring)."
+  type        = string
+  default     = ""
+}
+
+variable "vault_gcpkms_crypto_key_name" {
+  description = "Optional name for the KMS crypto key used by Vault auto-unseal (empty uses <name_prefix>-vault-gcpkms-key)."
+  type        = string
+  default     = ""
+}
+
+variable "vault_gcpkms_keyring_location" {
+  description = "KMS location for the auto-unseal key ring."
+  type        = string
+  default     = "us-central1"
 }
 
 variable "vault_log_level" {

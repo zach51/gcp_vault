@@ -7,6 +7,31 @@ locals {
   services_range_name  = "${var.name_prefix}-services"
   node_service_account = "${var.name_prefix}-gke-nodes"
   vault_storage_config = var.vault_storage_class == "" ? { enabled = true, size = var.vault_storage_size } : { enabled = true, size = var.vault_storage_size, storageClass = var.vault_storage_class }
+  vault_kms_key_ring_name = coalesce(
+    var.vault_gcpkms_key_ring_name,
+    "${var.name_prefix}-vault-gcpkms-keyring"
+  )
+  vault_kms_crypto_key_name = coalesce(
+    var.vault_gcpkms_crypto_key_name,
+    "${var.name_prefix}-vault-gcpkms-key"
+  )
+  vault_gcpkms_config = var.vault_auto_unseal_gcpkms_enabled ? "    seal \"gcpckms\" {\n      project    = \"${var.project_id}\"\n      region     = \"${var.vault_gcpkms_keyring_location}\"\n      key_ring   = \"${local.vault_kms_key_ring_name}\"\n      crypto_key = \"${local.vault_kms_crypto_key_name}\"\n    }\n" : ""
+  vault_standalone_config = <<-EOT
+    ui = true
+    disable_mlock = true
+
+    listener "tcp" {
+      address         = "[::]:8200"
+      cluster_address = "[::]:8201"
+      tls_disable     = 1
+    }
+
+    ${local.vault_gcpkms_config}
+
+    storage "file" {
+      path = "/vault/data"
+    }
+  EOT
 }
 
 resource "google_project_service" "container" {
@@ -18,6 +43,12 @@ resource "google_project_service" "container" {
 resource "google_project_service" "compute" {
   project            = var.project_id
   service            = "compute.googleapis.com"
+  disable_on_destroy = false
+}
+
+resource "google_project_service" "cloudkms" {
+  project            = var.project_id
+  service            = "cloudkms.googleapis.com"
   disable_on_destroy = false
 }
 
@@ -78,6 +109,33 @@ resource "google_project_iam_member" "gke_nodes_artifact_registry" {
   project = var.project_id
   role    = "roles/artifactregistry.reader"
   member  = "serviceAccount:${google_service_account.gke_nodes.email}"
+}
+
+resource "google_kms_key_ring" "vault" {
+  count    = var.vault_auto_unseal_gcpkms_enabled ? 1 : 0
+  project  = var.project_id
+  name     = local.vault_kms_key_ring_name
+  location = var.vault_gcpkms_keyring_location
+  depends_on = [
+    google_project_service.cloudkms,
+  ]
+}
+
+resource "google_kms_crypto_key" "vault" {
+  count           = var.vault_auto_unseal_gcpkms_enabled ? 1 : 0
+  name            = local.vault_kms_crypto_key_name
+  key_ring        = google_kms_key_ring.vault[0].id
+  rotation_period = "7776000s"
+  depends_on = [
+    google_kms_key_ring.vault,
+  ]
+}
+
+resource "google_kms_crypto_key_iam_member" "vault_gcpkms" {
+  count = var.vault_auto_unseal_gcpkms_enabled ? 1 : 0
+  crypto_key_id = google_kms_crypto_key.vault[0].id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  member        = "serviceAccount:${google_service_account.gke_nodes.email}"
 }
 
 resource "google_project_iam_member" "scheduler_container_admin" {
@@ -239,20 +297,7 @@ resource "helm_release" "vault" {
         logLevel = var.vault_log_level
         standalone = {
           enabled = true
-          config  = <<-EOT
-            ui = true
-            disable_mlock = true
-
-            listener "tcp" {
-              address         = "[::]:8200"
-              cluster_address = "[::]:8201"
-              tls_disable     = 1
-            }
-
-            storage "file" {
-              path = "/vault/data"
-            }
-          EOT
+          config  = local.vault_standalone_config
         }
         dataStorage = local.vault_storage_config
         service = {

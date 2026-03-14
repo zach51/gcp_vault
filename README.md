@@ -89,3 +89,24 @@ terraform destroy
   - Down to `0` on `scheduled_scale_down_cron`
   - Up to `scheduled_daytime_node_count` on `scheduled_scale_up_cron`
 - While scaled down, Vault is unavailable until the scheduled scale-up runs.
+
+### Lowest-cost test profile (already in this repo)
+
+- Keep a single node (`gke_node_count = 1`) with `e2-small` machine type.
+- Keep it preemptible (`gke_preemptible_nodes = true`) for significant compute savings.
+- Keep small disks (`gke_node_disk_size_gb = 20`, `vault_storage_size = 5Gi`) unless your test data needs more.
+- Leave `enable_scheduled_scale_down = true` to auto-scale to `0` in off-hours.
+
+## Optional auto-unseal with GCP KMS
+
+- Auto-unseal with GCP KMS is enabled by default.
+- Override `vault_auto_unseal_gcpkms_enabled = false` if you want to disable it.
+- In a fresh GCP project, the first `terraform apply` may fail while Cloud KMS is still being enabled. Re-run `terraform apply` and the key resources will be created once the API is active.
+- Optionally override:
+  - `vault_gcpkms_key_ring_name` (defaults to `"{name_prefix}-vault-gcpkms-keyring"` when unset)
+  - `vault_gcpkms_crypto_key_name` (defaults to `"{name_prefix}-vault-gcpkms-key"` when unset)
+  - `vault_gcpkms_keyring_location` (default: `us-central1`)
+
+For a step-by-step practice flow, see [AUTO_UNSEAL_PRACTICE.md](AUTO_UNSEAL_PRACTICE.md).
+- Terraform will create the KMS key ring and key, grant the GKE node service account decrypt/encrypt access, and inject Vault `gcpckms` seal configuration.
+- You should no longer need to run manual unseal after normal restarts; initial bootstrap still requires initialization once.

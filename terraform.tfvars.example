@@ -8,14 +8,14 @@ admin_cidrs = [
   "203.0.113.10/32"
 ]
 
-# Optional sizing and scaling knobs
-gke_node_machine_type = "e2-medium"
+# Cost-optimized sizing for short-lived lab testing
+gke_node_machine_type = "e2-small"
 gke_node_count        = 1
 gke_enable_autoscaling = false
 gke_min_node_count    = 1
 gke_max_node_count    = 1
 gke_preemptible_nodes = true
-gke_node_disk_size_gb = 30
+gke_node_disk_size_gb = 20
 gke_node_disk_type    = "pd-standard"
 
 # Automatic off-hours scale-to-zero (Vault unavailable while scaled down)
@@ -29,4 +29,10 @@ scheduled_daytime_node_count = 1
 # vault_helm_chart_version = "0.28.0"
 
 vault_version      = "1.17.5"
-vault_storage_size = "10Gi"
+vault_storage_size = "5Gi"
+
+# Optional GCP KMS auto-unseal (enabled by default in this stack)
+# vault_auto_unseal_gcpkms_enabled = true
+# vault_gcpkms_key_ring_name      = "<name_prefix>-vault-gcpkms-keyring"
+# vault_gcpkms_crypto_key_name    = "<name_prefix>-vault-gcpkms-key"
+# vault_gcpkms_keyring_location   = "us-central1"
